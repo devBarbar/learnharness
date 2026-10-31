@@ -87,3 +87,5 @@ export * from "./coverage.ts";
 // ONE session→markdown formatter — the extractor's view and the user-facing
 // export share it. Pure, browser-safe.
 export * from "./session-markdown.ts";
+// The iPad companion notebook contract (pure; browser-safe).
+export * from "./contracts/notebook.ts";

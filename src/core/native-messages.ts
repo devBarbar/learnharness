@@ -34,7 +34,7 @@
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ImageContent, Message, TextContent, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import { QUESTION_TOOLS, type PendingQuestion } from "./pending.ts";
 import { CLAUDE_CODE_PROVIDER } from "./contracts/claude-code.ts";
 import {
@@ -44,6 +44,15 @@ import {
 	THINKING_LABEL,
 } from "./contracts/chat.ts";
 import { compactAnswerForModel, type QuestionAnswerData } from "./question-core.ts";
+import {
+	NOTEBOOK_IMAGE_WINDOW,
+	notebookNoVisionNote,
+	notebookPageLabel,
+	notebookPlaceholder,
+	validNotebookAttachments,
+	type NotebookAttachment,
+	type NotebookImage,
+} from "./contracts/notebook.ts";
 import { activeCompactionOf, keptIndexFor } from "./compaction.ts";
 import { parseQuestionInput } from "./tool-parts.ts";
 
@@ -313,14 +322,24 @@ export function newGraphContextMessage(picks: readonly GraphContextPick[], chain
  *  content label is the single "Your thinking"; `details` keeps the raw
  *  payload for the transcript card. One problem may carry many
  *  submissions. */
-export function newThinkingMessage(problemCallId: string, text: string): LhMarkerMessage {
+export function newThinkingMessage(
+	problemCallId: string,
+	text: string,
+	notebook?: { attachments: NotebookAttachment[]; noVision: boolean; via?: "ipad" },
+): LhMarkerMessage {
+	const attached = notebook && notebook.attachments.length > 0 ? notebook.attachments : undefined;
 	return {
 		id: newMessageId(),
 		role: "custom",
 		customType: "practice-thinking",
 		content: `${THINKING_LABEL}:\n${text}`,
 		display: true,
-		details: { problemCallId, text },
+		details: {
+			problemCallId,
+			text,
+			...(attached ? { notebook: attached, ...(notebook!.noVision ? { notebookNoVision: true } : {}) } : {}),
+			...(notebook?.via ? { via: notebook.via } : {}),
+		},
 		timestamp: Date.now(),
 	};
 }
@@ -580,7 +599,50 @@ function resultIdsFrom(messages: readonly AgentMessage[]): Set<string> {
  * Contract (pi-agent-core): never throws — an unknown shape passes
  * through untouched rather than killing the loop.
  */
-export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
+/** The notebook seam's injected IO (iPad companion): the core never reads
+ *  files — the server binds a resolver for the turn's chat, plus the
+ *  conversation model's image capability. Absent = text placeholders only
+ *  (compaction, tests, any caller without the bytes). */
+export interface NotebookWire {
+	image: (attachment: NotebookAttachment) => NotebookImage | null;
+	vision: boolean;
+}
+
+/** The record's notebook attachments on an answer or thinking message. */
+export function notebookAttachmentsOf(message: LhMessage): NotebookAttachment[] {
+	const role = (message as { role?: string }).role;
+	if (role === "toolResult") {
+		return validNotebookAttachments(((message as ToolResultMessage).details as { notebook?: unknown } | undefined)?.notebook);
+	}
+	if (role === "custom" && (message as LhMarkerMessage).customType === "practice-thinking") {
+		return validNotebookAttachments(((message as LhMarkerMessage).details as { notebook?: unknown } | undefined)?.notebook);
+	}
+	return [];
+}
+
+/** The model-facing blocks for one message's attachments. */
+function notebookBlocks(
+	attachments: NotebookAttachment[],
+	inWindow: boolean,
+	wire: NotebookWire | undefined,
+): Array<TextContent | ImageContent> {
+	if (!wire || !inWindow) return [{ type: "text", text: notebookPlaceholder(attachments) }];
+	if (!wire.vision) return [{ type: "text", text: notebookNoVisionNote(attachments) }];
+	const blocks: Array<TextContent | ImageContent> = [];
+	for (const a of attachments) {
+		let image: NotebookImage | null = null;
+		try { image = wire.image(a); } catch { image = null; } // never throw (convertToLlm contract)
+		if (!image) {
+			blocks.push({ type: "text", text: `[The learner's notebook page ${a.pageNumber} was attached here, but its image is no longer available.]` });
+			continue;
+		}
+		blocks.push({ type: "text", text: notebookPageLabel(a) });
+		blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
+	}
+	return blocks;
+}
+
+export function toLlmMessages(messages: readonly AgentMessage[], notebook?: NotebookWire): Message[] {
 	// THE COMPACTION CUT (owner round 14, 2026-10-05): the ACTIVE marker
 	// (the newest — chained compactions rule last) names the first kept
 	// message; everything before it is replaced by the marker's content
@@ -619,7 +681,16 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 	const out: Message[] = [];
 	if (leading) out.push(leading);
 	if (head) out.push(head);
-	for (let i = leading ? Math.max(start, 1) : start; i < messages.length; i++) {
+	// THE NOTEBOOK IMAGE WINDOW: only the newest NOTEBOOK_IMAGE_WINDOW
+	// attachment-carrying answers keep their images; older ones become a
+	// one-line placeholder (every turn resends the history).
+	const first = leading ? Math.max(start, 1) : start;
+	const withNotebook: number[] = [];
+	for (let i = first; i < messages.length; i++) {
+		if (notebookAttachmentsOf(messages[i] as LhMessage).length > 0) withNotebook.push(i);
+	}
+	const imageWindow = new Set(withNotebook.slice(-NOTEBOOK_IMAGE_WINDOW));
+	for (let i = first; i < messages.length; i++) {
 		const m = messages[i]!;
 		const role = (m as { role?: string }).role;
 		if (role === "custom") {
@@ -631,16 +702,26 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 			// stored position. Without a resolved head, preserve the existing
 			// full-history fallback, including the summary text.
 			if (marker.customType === "compaction" && head !== null) continue;
+			const markerAttachments = notebookAttachmentsOf(marker);
 			out.push({
 				role: "user",
-				content: [{ type: "text", text: marker.content }],
+				content: [
+					{ type: "text", text: marker.content },
+					...(markerAttachments.length > 0 ? notebookBlocks(markerAttachments, imageWindow.has(i), notebook) : []),
+				],
 			timestamp: marker.timestamp,
 			});
 			continue;
 		}
 		// Strip app-only id/CLI context metadata: the wire carries the native shape only.
 		const { id: _id, cliContextWindow: _cliContextWindow, ...native } = m as LhMessage;
-		out.push(native as Message);
+		const resultAttachments = role === "toolResult" ? notebookAttachmentsOf(m as LhMessage) : [];
+		out.push(resultAttachments.length > 0
+			? {
+				...(native as ToolResultMessage),
+				content: [...(native as ToolResultMessage).content, ...notebookBlocks(resultAttachments, imageWindow.has(i), notebook)],
+			}
+			: native as Message);
 		// Repair unanswered calls from completed generations, not calls in
 		// failed generations. Pi filters error/aborted assistants itself;
 		// adding results for their unexecuted calls would leave orphans.

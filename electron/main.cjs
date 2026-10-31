@@ -42,7 +42,9 @@ const path = require("node:path");
 // renderer owns the number; this is the IPC widen target).
 const SIDEBAR_AUTOCLOSE = 928;
 
-const PRODUCT_NAME = "LearnHarness";
+// Fork branding (Barbar Learning Harness): its own name → its own userData
+// folder, so it installs and runs beside the original LearnHarness.
+const PRODUCT_NAME = "Barbar Learning Harness";
 
 // APP NAME → userData (owner, 2026-10-10): the Application Support dir is
 // exactly "LearnHarness" in dev AND packaged. Packaged Electron would

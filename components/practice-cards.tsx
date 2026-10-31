@@ -1,5 +1,6 @@
 "use client";
 
+import { NotebookStrip } from "@/components/notebook-strip";
 import { ToolContentResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
 import type { ArtifactPartProps } from "@/src/core";
@@ -53,6 +54,9 @@ export interface PracticeThinkingData {
 	/** Legacy records (pre 2026-10-05) carry the old two-lane flag; ignored. */
 	commit?: boolean;
 	text: string;
+	/** iPad companion: the notebook pages this submission carried. */
+	notebook?: unknown;
+	notebookNoVision?: boolean;
 }
 
 export function ProblemCard({ part }: ArtifactPartProps) {
@@ -289,10 +293,15 @@ function MetadataPopover({
 	);
 }
 
-export function ThinkingCard({ data }: { data: PracticeThinkingData }) {
+export function ThinkingCard({ data, chatId }: { data: PracticeThinkingData; chatId?: string }) {
 	// The unified row (owner rounds, 2026-10-05): one style, one label —
 	// 50%-italic quote block on expand. Legacy records' commit flag is
 	// deliberately unread (one lane now). A TRANSCRIPT row (owner round,
 	// 2026-10-07): full-width band + rail, arriving expanded.
-	return <ThinkingBlock testId="thinking-card" label="YOUR THINKING" text={data.text} defaultOpen />;
+	return (
+		<>
+			<ThinkingBlock testId="thinking-card" label="YOUR THINKING" text={data.text} defaultOpen />
+			<NotebookStrip chatId={chatId} notebook={data.notebook} noVision={data.notebookNoVision} />
+		</>
+	);
 }

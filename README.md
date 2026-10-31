@@ -33,6 +33,8 @@ Instead of just giving you an explanation, it uses your answers and thinking to 
 
 The agent can also research questions in the background, create visual explanations, and build interactive demonstrations.
 
+**iPad notebook.** Pair an iPad over Tailscale and keep a handwritten notebook beside each session: sketches, mind maps and photos of paper notes. Changed pages ride along with every answer, and free-form questions can be answered from the iPad. See the [iPad companion guide](docs/ipad-companion.md).
+
 ## Knowledge that carries forward
 
 What you are taught accumulates as propositions and reasoning chains: individual claims and the premises that lead to them. The graph shows this structure, with links back to the source sessions. You can also import notes.

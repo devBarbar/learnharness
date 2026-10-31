@@ -58,8 +58,10 @@ import {
 	parseChatInput,
 	questionRecoveryAppends,
 	retryDrops,
+	type InputNotebook,
 	type TurnInput,
 } from "../core/input-events.ts";
+import { changedPageAttachments, type NotebookAttachment } from "../core/contracts/notebook.ts";
 import { steerDelivered } from "../core/contracts.ts";
 import type {CallUsage} from "../core/contracts.ts";
 
@@ -161,6 +163,20 @@ function retentionForSlot(slot: ModelSlotName) {
 
 setJobRespawn((jobId) => void jobRunner.runJob(jobId));
 
+/** The notebook pages an answer carries (empty when nothing changed). */
+function notebookStampFor(chatId: string, vision: boolean, via?: "ipad"): InputNotebook {
+	let attachments: NotebookAttachment[] = [];
+	try { attachments = changedPageAttachments(stores.notebookStore.read(chatId)); }
+	catch (err) { console.error(`[chat ${chatId}] notebook read failed — answering without it:`, err); }
+	return { attachments, noVision: !vision, ...(via ? { via } : {}) };
+}
+
+function markNotebookSent(chatId: string, stamp: InputNotebook | undefined): void {
+	if (!stamp || stamp.attachments.length === 0) return;
+	try { stores.notebookStore.markSent(chatId, stamp.attachments); }
+	catch (err) { console.error(`[chat ${chatId}] notebook sent-mark failed:`, err); }
+}
+
 /** The route-facing entry: parse {chatId, input} and run one turn. */
 export async function handleChatRequest(
 	req: Request,
@@ -195,6 +211,7 @@ export async function handleChatInput(
 	chatId: string,
 	input: TurnInput,
 	buildAgent?: (opts: AgentBuildOptions & { teaching: boolean }) => TeachingAgent,
+	notebookVia?: "ipad",
 ): Promise<Response> {
 	let record = stores.chatStore.getChat(chatId);
 	if (!record) {
@@ -315,12 +332,19 @@ export async function handleChatInput(
 	// re-fire of an already-landed one) - with claimSteers gone, this wake
 	// input is the only steer appender; in-run delivery rides pi's own
 	// follow-up queue and never builds an input event at all.
+	// THE NOTEBOOK STAMP (iPad companion): answers and practice thinking
+	// carry the notebook pages that changed since the previous answer.
+	// Read here, synchronously before the write-ahead persist, and marked
+	// sent only after it lands — a refused input attaches nothing.
+	const notebookStamp = input.type === "answer" || input.type === "thinking"
+		? notebookStampFor(chatId, conversationEngine.model.input.includes("image"), notebookVia)
+		: undefined;
 	let appends;
 	try {
 		appends =
 			input.type === "steers"
 				? input.steers.filter((s) => !steerDelivered(record.messages, s.id))
-				: inputAppends(record, input);
+				: inputAppends(record, input, notebookStamp);
 	} catch (err) {
 		if (err instanceof ChatInputError) {
 			return Response.json({ error: err.message }, { status: 400 });
@@ -345,6 +369,7 @@ export async function handleChatInput(
 			console.error(`[chat ${chatId}] write-ahead persist failed:`, err);
 			return new Response("Your input could not be saved. Please try again.", { status: 500 });
 		}
+		markNotebookSent(chatId, notebookStamp);
 		emit("record-changed", { chatId });
 		return settledTurnResponse(); // the cheap terminal — no beginTurn, no turn
 	}
@@ -378,6 +403,7 @@ export async function handleChatInput(
 		endTurn(chatId);
 		return new Response("Your input could not be saved. Please try again.", { status: 500 });
 	}
+	markNotebookSent(chatId, notebookStamp);
 	// Visibility bookkeeping is not the canonical save. Its failure must
 	// neither misreport a saved input as lost nor prevent the turn running.
 	try {
@@ -454,6 +480,10 @@ export async function handleChatInput(
 		// point as the tool delta — the agent layer composes the system
 		// prompt fresh per turn, swapping in any enabled override segments.
 		promptSwitches: effective.agent.prompts,
+		notebookImage: (attachment) => {
+			const bytes = stores.notebookStore.readImage(chatId, attachment.file);
+			return bytes ? { data: bytes.toString("base64"), mimeType: attachment.mimeType } : null;
+		},
 	};
 	// PRACTICE BRANCH (owner design, 2026-10-04): a kind:"practice"
 	// session builds the practitioner from turn 1 — no prober→teacher

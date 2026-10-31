@@ -22,6 +22,7 @@ import { CLAUDE_CODE_PROVIDER } from "./claude-code/constants.ts";
 import { quizInputObject, quizInputProblems } from "../core/question-core.ts";
 import { QUESTION_TOOLS, type EnabledTools } from "../core/pending.ts";
 import { toLlmMessages, nativeInputCause, PRACTICE_PROBLEM_TOOL } from "../core/native-messages.ts";
+import type { NotebookAttachment, NotebookImage } from "../core/contracts/notebook.ts";
 import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
 import { usageWasAdmitted } from "./subscription-request-cycle.ts";
 
@@ -130,6 +131,10 @@ export interface AgentBuildOptions {
 	 *  <chatId>.jsonl via providerEventObserver — the GLM-truncation /
 	 *  DeepSeek-id incident layer. Absent or env-off → no observer. */
 	chatId?: string;
+	/** iPad companion: resolves a notebook attachment's image bytes for this
+	 *  chat (the server binds it; the agent layer never reads the store).
+	 *  Absent → notebook attachments reach the model as text placeholders. */
+	notebookImage?: (attachment: NotebookAttachment) => NotebookImage | null;
 }
 
 /**
@@ -234,7 +239,9 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 		// UI-only markers (plan-block) drop, the app's id fields strip, and
 		// an abort's dangling question call gets its INTERRUPTED result. It
 		// must never throw (pi's convertToLlm contract).
-		convertToLlm: toLlmMessages,
+		convertToLlm: (messages) => toLlmMessages(messages, opts.notebookImage
+			? { image: opts.notebookImage, vision: engine.model.input.includes("image") }
+			: undefined),
 		prepareRequest: (request) => {
 			if (opts.callPurpose) {
 				let learner = false, automatic = false;

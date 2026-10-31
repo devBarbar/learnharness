@@ -58,6 +58,7 @@ import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
 import { SessionMessageNavigation } from "@/components/session-navigation";
 import { PracticeDock } from "@/components/practice-dock";
+import { useCompanionFocus } from "@/components/companion-focus";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { TopBar } from "@/components/top-bar";
@@ -1140,6 +1141,8 @@ export function Chat({
 	 * flip consumes this flag to canonize the view onto the record. See the
 	 * settle effect and the turn-settled handler below. */
 	const settleAnnouncedRef = useRef(false);
+	// iPad companion: the notebook follows the session shown here.
+	useCompanionFocus(chatId);
 	useServerEvent("turn-started", (p) => {
 		// Known non-issue: beginTurn emits before registerTurn in the same
 		// synchronous request flow; a GET /stream inside that sub-ms window
@@ -1446,7 +1449,7 @@ export function Chat({
 											case "data-compaction-cut":
 												return <CompactionCutDivider key={pi} data={part.data as CompactionDividerData} />;
 											case "data-practice-thinking":
-												return <ThinkingCard key={pi} data={part.data as PracticeThinkingData} />;
+												return <ThinkingCard key={pi} data={part.data as PracticeThinkingData} chatId={chatId} />;
 											case "data-practice-next":
 												// The learner's move-on signal (owner round 16): a compact
 												// centered mono-caps line — chrome, the dismissal register.
@@ -1600,7 +1603,7 @@ export function Chat({
 														// transcript; answered ones render as graded records.
 														if (part.state === "output-available") {
 															return (
-																<AnsweredCard key={pi} answer={part.output as QuestionAnswerData} input={part.input} />
+																<AnsweredCard key={pi} answer={part.output as QuestionAnswerData} input={part.input} chatId={chatId} />
 															);
 														}
 														return null;

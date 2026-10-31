@@ -19,6 +19,7 @@
 
 import { Type, type Static } from "typebox";
 import { stripModelValueDebris } from "./value-debris.ts";
+import type { NotebookAttachment } from "./contracts/notebook.ts";
 
 // ─── shared types ───────────────────────────────────────────────────────────
 
@@ -469,6 +470,16 @@ export interface QuestionAnswerData {
 	explanation?: string; // quiz only (rendering)
 	dismissed?: boolean;
 	answeredAt: string;
+	/** SERVER-STAMPED (iPad companion): the notebook pages that changed
+	 *  since the previous answer. References only — the bytes join the
+	 *  model wire at toLlmMessages. Never accepted from the client. */
+	notebook?: NotebookAttachment[];
+	/** SERVER-STAMPED: the conversation model could not read images when
+	 *  this answer was sent — the card shows a quiet warning. */
+	notebookNoVision?: boolean;
+	/** Where the answer was written ("ipad" = the companion's notebook
+	 *  answer). Absent = the desktop dock. */
+	via?: "ipad";
 }
 
 /** Client-facing question payload — deliberately omits the answer. */
@@ -705,6 +716,62 @@ function formatOptionRef(options: QuizOption[], index: number): string {
  * Turn an AnswerRequest into the full answer record + the user message the
  * agent will see. Quiz answers are graded here; ask answers are not.
  */
+/** Canonical QuestionData for a persisted question call — the dock's
+ *  build, single-sourced so the server (the iPad companion's notebook
+ *  answer) grades and snapshots exactly like the desktop dock. Quiz
+ *  options are deterministically shuffled (seeded by toolCallId) so
+ *  position never leaks correctness AND every renderer sees one order. */
+export function questionDataFromCall(
+	kind: QuestionKind,
+	toolCallId: string,
+	input: QuizToolInput | AskToolInput | ExplainToolInput,
+): QuestionData {
+	const quizInput = kind === "quiz" ? (input as QuizToolInput) : null;
+	const askInput = kind === "ask" ? (input as AskToolInput) : null;
+	const explainInput = kind === "explain" ? (input as ExplainToolInput) : null;
+	const multi = input instanceof Object && "multiSelect" in input ? input.multiSelect === true : false;
+	const mode: QuestionMode =
+		kind === "quiz"
+			? multi
+				? "multi-select"
+				: "single-select"
+			: askInput?.options?.length
+				? multi
+					? "multi-select"
+					: "single-select"
+				: "text";
+	const options = normalizeOptions(
+		(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string }[],
+	);
+	const ordered = kind === "quiz" && options.length > 0 ? shuffleOptions(options, seededRandom(toolCallId)) : options;
+	const q: QuestionData = {
+		id: toolCallId,
+		kind,
+		// The role (owner 2026-10-03): predict questions gate by it in the
+		// view (never collapsed) and the answered card tucks the explanation.
+		questionType: kind === "quiz" ? normalizeQuizType((input as { type?: unknown }).type) : undefined,
+		question: input.question,
+		context: input.details,
+		mode,
+		options: ordered,
+		createdAt: new Date().toISOString(),
+	};
+	if (quizInput) {
+		const resolved = resolveCorrect(quizInput.correctAnswer, ordered);
+		if (resolved.error) console.error("[quiz] correctAnswer did not resolve:", resolved.error);
+		q.correctIndices = resolved.indices;
+		q.explanation = quizInput.explanation;
+	}
+	if (explainInput) {
+		// The commitment rides the question data (never sent to the
+		// client before answering) and snapshots into the answer at submit.
+		// One field, reasoning included — no separate explanation
+		// (owner ruling 2026-09-27).
+		q.committedAnswer = explainInput.correctAnswer;
+	}
+	return q;
+}
+
 export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string): QuestionAnswerData {
 	const base: QuestionAnswerData = {
 		kind: qd.kind,

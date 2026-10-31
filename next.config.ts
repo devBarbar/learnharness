@@ -7,6 +7,11 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 const nextConfig: NextConfig = {
 	// Public build metadata only; no new runtime Electron version API.
 	env: { LH_VERSION: pkg.version, LH_HOMEPAGE: pkg.homepage },
+	// iPad companion in `next dev`: the page is reached through `tailscale
+	// serve` (<machine>.<tailnet>.ts.net); dev scripts are otherwise refused
+	// to that host. Dev-only — production has no such check, and proxy.ts
+	// still confines every tailnet request to the companion surface.
+	allowedDevOrigins: ["**.ts.net"],
 	// Leave multipart headroom above the 25 MiB file allowance. This is a
 	// proxy buffer, not a rejection gate: the import route also bounds reads,
 	// validates actual file bytes and handles incomplete multipart bodies.

@@ -9,8 +9,10 @@
 #   - signed + notarized since 2026-10-08 (Developer ID Application cert in
 #     the login keychain; notary credentials in the LH_NOTARY keychain
 #     profile; the profile + team env vars are baked into desktop:dist).
-appId: com.learnharness.LearnHarness
-productName: LearnHarness
+# Fork branding: a distinct appId/productName installs beside the original
+# LearnHarness (separate install dir, Start-menu entry and userData).
+appId: dev.barbar.LearningHarness
+productName: Barbar Learning Harness
 directories:
   output: dist
 # Icons (owner ruling, 2026-10-13) — per-platform sources in build/:
@@ -188,7 +190,9 @@ publish:
   # would be a leak. desktop:dist passes no --publish flag, so builds never
   # upload; publishing happens at release time (GH_TOKEN + --publish).
   - provider: github
-    owner: amosblomqvist
+    # The fork's own releases — never the upstream feed, which would
+    # "update" this build back into the original app.
+    owner: devBarbar
     repo: learnharness
     # All three CI jobs contribute assets; only the owner publishes it.
     releaseType: draft

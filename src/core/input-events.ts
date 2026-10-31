@@ -30,6 +30,7 @@
 
 import type { QuestionAnswerData } from "./question-core.ts";
 import type { LhMessage } from "./native-messages.ts";
+import type { NotebookAttachment } from "./contracts/notebook.ts";
 import {
 	activeProblemOf,
 	concludedByDismissalPair,
@@ -44,6 +45,15 @@ import {
 	pendingProblemDismissalOf,
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
+
+/** The server-side notebook stamp an answer/thinking input carries
+ *  (iPad companion): the changed pages, and whether the conversation
+ *  model can read them. Never part of the client wire. */
+export interface InputNotebook {
+	attachments: NotebookAttachment[];
+	noVision: boolean;
+	via?: "ipad";
+}
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
@@ -176,7 +186,12 @@ export function parseChatInput(input: unknown): ChatInput {
 			if (typeof i.answer !== "object" || i.answer === null) {
 				throw new ChatInputError("answer input requires the graded answer object");
 			}
-			return { type: "answer", toolCallId: i.toolCallId, answer: i.answer as QuestionAnswerData };
+			{
+				// Server-stamped fields are never accepted from a client: the
+				// notebook references name files the server reads.
+				const { notebook: _n, notebookNoVision: _v, via: _via, ...answer } = i.answer as QuestionAnswerData;
+				return { type: "answer", toolCallId: i.toolCallId, answer: answer as QuestionAnswerData };
+			}
 		case "continue":
 			return { type: "continue" };
 		case "retry":
@@ -214,6 +229,7 @@ export function parseChatInput(input: unknown): ChatInput {
 export function inputAppends(
 	record: { messages: LhMessage[]; kind?: string },
 	input: ChatInput,
+	notebook?: InputNotebook,
 ): LhMessage[] {
 	switch (input.type) {
 		case "text":
@@ -223,7 +239,11 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+			const { notebook: _stale, notebookNoVision: _staleFlag, ...answer } = input.answer;
+			const attached = notebook && notebook.attachments.length > 0
+				? { notebook: notebook.attachments, ...(notebook.noVision ? { notebookNoVision: true } : {}) }
+				: {};
+			return [newAnswerResult(input.toolCallId, pending.tool, { ...answer, ...attached })];
 		}
 		case "continue":
 			return dismissalConclusion(record);
@@ -238,7 +258,7 @@ export function inputAppends(
 			if (!active || active.toolCallId !== input.problemCallId) {
 				throw new ChatInputError("thinking input targets no active problem");
 			}
-			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text)];
+			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text, notebook)];
 		}
 		case "next": {
 			// Honest 400s, the thinking gate's discipline: the signal is a

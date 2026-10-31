@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ConfidenceRail } from "@/components/confidence-rail";
 import { GlyphMark } from "@/components/ui/glyph-mark";
 import { ThinkingBlock } from "@/components/thinking-block";
+import { NotebookStrip } from "@/components/notebook-strip";
 import { PathText } from "@/components/file-path-chip";
 import { cn } from "@/lib/utils";
 import { ToolContentResponse } from "@/components/ai-elements/message";
@@ -20,7 +21,7 @@ import { answerForPresentation, parseAskInput, parseQuizInput } from "@/src/core
  * client — the card reveals his answer, the committed correct answer, and
  * the explanation, with NO verdict chips (owner ruling 2026-09-27).
  */
-export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionAnswerData; input?: unknown }) {
+export function AnsweredCard({ answer: savedAnswer, input, chatId }: { answer: QuestionAnswerData; input?: unknown; chatId?: string }) {
 	const answer = answerForPresentation(savedAnswer, input);
 	const [whyOpen, setWhyOpen] = useState(false); // the tucked explanation (predictions, owner 2026-10-03)
 	if (answer.dismissed) {
@@ -231,6 +232,8 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 				</div>
 			)}
 		</div>
+		{/* iPad companion: the notebook pages this answer carried. */}
+		<NotebookStrip chatId={chatId} notebook={answer.notebook} noVision={answer.notebookNoVision} />
 		</>
 	);
 }
