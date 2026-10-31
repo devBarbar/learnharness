@@ -36,7 +36,7 @@ export function tailscaleBinary(env: Record<string, string | undefined> = proces
 	];
 	for (const c of candidates) {
 		try {
-			if (fs.statSync(c).isFile()) return c;
+			if (fs.statSync(/*turbopackIgnore: true*/ c).isFile()) return c;
 		} catch { /* not here */ }
 	}
 	return null;
@@ -46,7 +46,9 @@ function run(args: string[], timeoutMs = 15_000): Promise<{ stdout: string; stde
 	const bin = tailscaleBinary();
 	if (!bin) return Promise.reject(new TailscaleError("Tailscale is not installed on this computer."));
 	return new Promise((resolve, reject) => {
-		execFile(bin, args, { timeout: timeoutMs, windowsHide: true }, (err, stdout, stderr) => {
+		// The CLI is an external binary, never part of the app payload: keep
+		// the bundler's tracer from sweeping the whole project for it.
+		execFile(/*turbopackIgnore: true*/ bin, args, { timeout: timeoutMs, windowsHide: true }, (err, stdout, stderr) => {
 			if (err) {
 				const detail = (stderr || stdout || err.message).trim().split(/\r?\n/).slice(0, 4).join(" ");
 				reject(new TailscaleError(`tailscale ${args[0]} failed: ${detail}`));

@@ -13,6 +13,11 @@
 # LearnHarness (separate install dir, Start-menu entry and userData).
 appId: dev.barbar.LearningHarness
 productName: Barbar Learning Harness
+# The Windows per-user install folder is named after package.json "name"
+# (%LOCALAPPDATA%\Programs\<name>): rename it in the PACKAGED metadata so the
+# fork never installs into (and overwrites) the original's "learnharness".
+extraMetadata:
+  name: barbar-learning-harness
 directories:
   output: dist
 # Icons (owner ruling, 2026-10-13) — per-platform sources in build/:
