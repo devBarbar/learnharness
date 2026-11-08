@@ -103,6 +103,12 @@ const nextConfig: NextConfig = {
 			"node_modules/@earendil-works/pi-ai/dist/auth/oauth/{load,github-copilot,xai,device-code}.js",
 			"node_modules/@earendil-works/pi-ai/dist/utils/sleep.js",
 			"node_modules/@earendil-works/pi-agent-core/dist/**/*.json",
+			// Read-aloud (speech wave, 2026-11-08): speech-rule-engine loads its
+			// locale maps from disk and its DOM/XPath deps through eval("require")
+			// — all invisible to the tracer.
+			"node_modules/speech-rule-engine/lib/**/*",
+			"node_modules/@xmldom/xmldom/**/*",
+			"node_modules/wicked-good-xpath/**/*",
 			// Next 16.3.2 native Turbopack applies unanchored excludes while
 			// traversing modules; **/data/**/* still prunes gcp-metadata and
 			// its private runtime chain. Includes are applied after traversal.
@@ -123,6 +129,7 @@ const nextConfig: NextConfig = {
 		"@napi-rs/canvas", // native binding — bundling breaks the .node require
 		"@silvia-odwyer/photon-node", // CJS loads its adjacent WASM from disk
 		"@resvg/resvg-js", // native binding — same
+		"speech-rule-engine", // resolves its own mathmaps via require.resolve; eval("require") deps
 	],
 };
 

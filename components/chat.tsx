@@ -32,6 +32,7 @@ import { clearOpeningPrompt, readOpeningPromptEntry, stashOpeningPrompt, OPENING
 import { forwardDockWheel, useDockHeight } from "@/components/dock-height";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
+import { ListenAgain, SpeechStrip, useAutoRead } from "@/components/chat-speech";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
 import { StatsBar } from "@/components/stats-bar";
@@ -470,6 +471,8 @@ export function Chat({
 	const busy = localStream || turnInFlight;
 	const busyRef = useRef(busy);
 	busyRef.current = busy;
+	// Read-aloud (speech wave, 2026-11-08): every new tutor text, once complete.
+	useAutoRead({ chatId, messages, running: busy });
 	// The attach handoff (stream-reattach wave): the moment a resumed
 	// stream takes over the rendering — the SDK left "ready", so
 	// submitted/streaming means chunks are flowing — localStream covers
@@ -1563,6 +1566,7 @@ export function Chat({
 														return (
 															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} className="lh-source-passage">
 																<MessageResponse>{part.text}</MessageResponse>
+																{part.text ? <ListenAgain chatId={chatId} text={part.text} /> : null}
 															</div>
 														);
 													}
@@ -1716,6 +1720,7 @@ export function Chat({
 					pricing={pricing}
 					onReserve={setDockReserve}
 					dictationSlot={<DictationBar dictation={dictation} />}
+					speechSlot={<SpeechStrip chatId={chatId} />}
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
 					setupCta={
@@ -1952,6 +1957,7 @@ function DockOverlay({
 	plan,
 	onOpenPlan,
 	dictationSlot,
+	speechSlot,
 	dictationCancel,
 	setupCta,
 	queuedSteers,
@@ -1998,6 +2004,9 @@ function DockOverlay({
 	/** The dictation strip (STT wave): rendered in the stats bar's middle
 	 *  slot — the mic button + live meter (components/dictation.tsx). */
 	dictationSlot?: React.ReactNode;
+	/** The read-aloud status line (speech wave, 2026-11-08): above the
+	 *  queued steers — what is being read, Stop, a failure notice. */
+	speechSlot?: React.ReactNode;
 	/** Esc in a pending question's field stops dictation (the strip is the
 	 *  stats bar's; the stop belongs to the page-owned hook, threaded down). */
 	dictationCancel?: () => void;
@@ -2364,6 +2373,7 @@ function DockOverlay({
 					    one-liners above the shell - right-aligned to where its corner
 					    rounding starts, truncated, no background, no container. A
 					    line dies when its card lands (visibleQueuedSteers). */}
+					{speechSlot}
 					<QueuedSteersBody steers={queuedSteers} />
 					{/* The reading-thinking field (owner 2026-10-03): mounted while a
 					    teach-phase check waits — the same cue that collapses it. It

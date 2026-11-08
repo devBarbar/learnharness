@@ -7,6 +7,7 @@ import { Hint } from "@/components/ui/hint";
 import { deepgramListenUrl, type DictationLanguage } from "@/src/core";
 import { useDictationLanguage } from "@/components/dictation-preference";
 import { setDictationActive } from "@/components/dictation-state";
+import { stopSpeech } from "@/components/speech-player";
 export { isDictationActive } from "@/components/dictation-state";
 
 /**
@@ -431,6 +432,8 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 	);
 
 	const start = useCallback(async () => {
+		// The mic must not hear the tutor's voice (speech wave, owner decision b).
+		stopSpeech();
 		setDictationActive(true);
 		setError(null);
 		setPhase("connecting");

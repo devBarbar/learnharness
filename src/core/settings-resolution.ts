@@ -36,6 +36,7 @@ import {
 	type FactorySettings,
 	type GeneralSettings,
 	type DictationSettings,
+	type SpeechSettings,
 	type CompactionSettings,
 	type CustomModel,
 	type CustomModelOverride,
@@ -74,6 +75,7 @@ export type EffectiveAppearance = FactorySettings["appearance"];
 export interface EffectiveSettings {
 	general: Required<GeneralSettings>;
 	dictation: Required<DictationSettings>;
+	speech: Required<SpeechSettings>;
 	agent: {
 		models: Record<BackgroundModelRole, EffectiveModelSpec | undefined>;
 		/** Delta map as stored — consumers resolve absent key → enabled. */
@@ -189,6 +191,12 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 		},
 		dictation: {
 			language: record?.dictation?.language ?? FACTORY_SETTINGS.dictation.language,
+		},
+		speech: {
+			autoRead: record?.speech?.autoRead ?? FACTORY_SETTINGS.speech.autoRead,
+			voice: record?.speech?.voice ?? FACTORY_SETTINGS.speech.voice,
+			speed: record?.speech?.speed ?? FACTORY_SETTINGS.speech.speed,
+			instructions: record?.speech?.instructions ?? FACTORY_SETTINGS.speech.instructions,
 		},
 		agent: {
 			models,

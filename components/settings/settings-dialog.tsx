@@ -37,6 +37,7 @@ import {
 	type AppearanceSettings,
 	type CompactionSettings,
 	type GraphSettings,
+	type SpeechSettings,
 	type UserSettings,
 } from "@/src/core";
 import { useAppearance } from "./appearance.tsx";
@@ -51,6 +52,7 @@ import { Hint } from "@/components/ui/hint";
 import { AppearanceSection, GraphSection } from "./appearance-section.tsx";
 import { KeyboardSection } from "./keyboard-section.tsx";
 import { CompanionSection } from "./companion-section.tsx";
+import { SpeechSection } from "./speech-section.tsx";
 import { ChatGPTUIProvider } from "./chatgpt-connection.tsx";
 import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 
@@ -62,6 +64,7 @@ const SECTIONS = [
 	{ id: "agent", label: "Agent" },
 	{ id: "appearance", label: "Appearance" },
 	{ id: "graph", label: "Graph" },
+	{ id: "speech", label: "Read aloud" },
 	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
 	{ id: "companion", label: "iPad companion" },
 	{ id: "general", label: "General" },
@@ -228,7 +231,7 @@ export function SettingsDialogBody({
 	 *  schema mistake caught by the validation surface). */
 	const write = useCallback(
 		async (
-			section: "general" | "agent" | "models" | "appearance" | "graph" | "compaction",
+			section: "general" | "agent" | "models" | "appearance" | "graph" | "compaction" | "speech",
 			body: object,
 		) => {
 			setError(null);
@@ -420,6 +423,20 @@ export function SettingsDialogBody({
 										onSectionChange={(next: GraphSettings) =>
 											void write("graph", next)
 										}
+									/>
+								</SettingsSection>
+							)}
+							{active === "speech" && (
+								<SettingsSection
+									title="Read aloud"
+									testid="section-speech"
+								>
+									<SpeechSection
+										speech={record.speech}
+										onSectionChange={(next: SpeechSettings) =>
+											void write("speech", next)
+										}
+										onOpenKeys={() => setActive("keys")}
 									/>
 								</SettingsSection>
 							)}

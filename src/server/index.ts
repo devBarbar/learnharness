@@ -56,3 +56,5 @@ export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
 // The iPad companion (notebook pages, pairing, Tailscale serve).
 export * from "./companion/api.ts";
+// Read-aloud (speech wave, 2026-11-08).
+export { speechSpeak, speechList, speechPiece, speechPreview } from "./speech/api.ts";

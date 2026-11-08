@@ -35,6 +35,10 @@ import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
 import type { SearchEngineId } from "./search.ts";
 import { isDictationLanguage, type DictationLanguage } from "./dictation.ts";
+import {
+	DEFAULT_SPEECH_INSTRUCTIONS, SPEECH_INSTRUCTIONS_MAX, SPEECH_SPEED_MAX, SPEECH_SPEED_MIN,
+	isSpeechVoice, type SpeechVoice,
+} from "./speech.ts";
 
 /** The schema version this code understands. Bump ONLY for breaking shape
  *  changes (a field renamed/meaning changed); pure additions never bump. */
@@ -340,6 +344,18 @@ export interface DictationSettings {
 	language?: DictationLanguage;
 }
 
+/** Read-aloud (speech wave, 2026-11-08): automatic reading of tutor
+ *  messages. Absent fields resolve to the factory (off, marin, 1×, the
+ *  tutor instruction). */
+export interface SpeechSettings {
+	autoRead?: boolean;
+	voice?: SpeechVoice;
+	/** Playback rate, SPEECH_SPEED_MIN..SPEECH_SPEED_MAX. */
+	speed?: number;
+	/** The speaking instruction sent with every synthesis request. */
+	instructions?: string;
+}
+
 /** Agent settings — everything about the non-conversation machinery. */
 export interface AgentSettings {
 	/** Background-role model/thinking overrides (absent role = config pin). */
@@ -467,6 +483,7 @@ export interface UserSettings {
 	version: number;
 	general?: GeneralSettings;
 	dictation?: DictationSettings;
+	speech?: SpeechSettings;
 	/** Explicit app-wide opt-in; absent/invalid is off, including older records. */
 	claudeCode?: { enabled?: boolean };
 	agent?: AgentSettings;
@@ -489,6 +506,7 @@ export interface FactorySettings {
 	version: number;
 	general: Required<GeneralSettings>;
 	dictation: Required<DictationSettings>;
+	speech: Required<SpeechSettings>;
 	appearance: {
 		mode: "dark" | "light";
 		background: string | null;
@@ -509,6 +527,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 	version: CURRENT_SETTINGS_VERSION,
 	general: { autoUpdate: true },
 	dictation: { language: "en" },
+	speech: { autoRead: false, voice: "marin", speed: 1, instructions: DEFAULT_SPEECH_INSTRUCTIONS },
 	appearance: {
 		mode: "dark",
 		background: null, // the dark default (#141414) lives in the mode's derivation curve
@@ -791,6 +810,19 @@ function sanitizeCompaction(raw: Record<string, unknown>): CompactionSettings {
 	return out;
 }
 
+/** Read-side speech coercion: invalid fields drop, tempo clamps, the
+ *  instruction is cut at its ceiling. */
+export function sanitizeSpeech(raw: Record<string, unknown>): SpeechSettings {
+	const out: SpeechSettings = {};
+	if (typeof raw.autoRead === "boolean") out.autoRead = raw.autoRead;
+	if (isSpeechVoice(raw.voice)) out.voice = raw.voice;
+	if (typeof raw.speed === "number" && Number.isFinite(raw.speed)) {
+		out.speed = Math.min(SPEECH_SPEED_MAX, Math.max(SPEECH_SPEED_MIN, raw.speed));
+	}
+	if (typeof raw.instructions === "string") out.instructions = raw.instructions.slice(0, SPEECH_INSTRUCTIONS_MAX);
+	return out;
+}
+
 /**
  * Coerce arbitrary JSON (disk file, network body) into a valid delta record:
  * known fields validated strictly (invalid ones drop/clamp per module doc),
@@ -811,6 +843,12 @@ export function sanitizeUserSettings(raw: unknown): UserSettings | null {
 		out.dictation = raw !== null && typeof raw === "object" && !Array.isArray(raw) &&
 			isDictationLanguage((raw as Record<string, unknown>).language)
 			? { language: (raw as DictationSettings).language }
+			: {};
+	}
+	if (r.speech !== undefined) {
+		const raw = r.speech;
+		out.speech = raw !== null && typeof raw === "object" && !Array.isArray(raw)
+			? sanitizeSpeech(raw as Record<string, unknown>)
 			: {};
 	}
 	if (r.claudeCode !== undefined) {

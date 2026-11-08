@@ -25,10 +25,12 @@ import type {
 	ModelsSettings,
 	ModelSlot,
 	RoleModelOverride,
+	SpeechSettings,
 } from "../core/settings.ts";
 import { BACKGROUND_MODEL_ROLES, CACHE_RETENTIONS, COMPACTION_THRESHOLD_FLOOR, CUSTOM_MODEL_PIN_FLOOR, EXTRACTION_CHUNK_TOKENS_FLOOR, MODEL_SLOTS } from "../core/settings.ts";
 import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
 import { isDictationLanguage } from "../core/dictation.ts";
+import { SPEECH_INSTRUCTIONS_MAX, SPEECH_SPEED_MAX, SPEECH_SPEED_MIN, SPEECH_VOICES, isSpeechVoice } from "../core/speech.ts";
 
 /** Parsed-or-rejected — `ok: false` carries the 400's error message. */
 export type SettingsBodyResult<T> =
@@ -405,6 +407,35 @@ export function parseDictationSettingsBody(body: unknown): SettingsBodyResult<Di
 	return { ok: true, settings: { language: raw.language } };
 }
 
+/** speech: { autoRead?: boolean, voice?: SPEECH_VOICES, speed?: 0.5..2,
+ *  instructions?: string ≤ SPEECH_INSTRUCTIONS_MAX } — strict write side. */
+export function parseSpeechSettingsBody(body: unknown): SettingsBodyResult<SpeechSettings> {
+	const raw = asRecord(body);
+	if (!raw) return { ok: false, error: "Invalid JSON body" };
+	const settings: SpeechSettings = {};
+	if (raw.autoRead !== undefined) {
+		if (typeof raw.autoRead !== "boolean") return { ok: false, error: "autoRead must be true or false" };
+		settings.autoRead = raw.autoRead;
+	}
+	if (raw.voice !== undefined) {
+		if (!isSpeechVoice(raw.voice)) return { ok: false, error: `Unsupported voice (one of: ${SPEECH_VOICES.join(", ")})` };
+		settings.voice = raw.voice;
+	}
+	if (raw.speed !== undefined) {
+		if (typeof raw.speed !== "number" || !Number.isFinite(raw.speed) || raw.speed < SPEECH_SPEED_MIN || raw.speed > SPEECH_SPEED_MAX) {
+			return { ok: false, error: `speed must be a number from ${SPEECH_SPEED_MIN} to ${SPEECH_SPEED_MAX}` };
+		}
+		settings.speed = raw.speed;
+	}
+	if (raw.instructions !== undefined) {
+		if (typeof raw.instructions !== "string" || raw.instructions.length > SPEECH_INSTRUCTIONS_MAX) {
+			return { ok: false, error: `instructions must be text of at most ${SPEECH_INSTRUCTIONS_MAX} characters` };
+		}
+		settings.instructions = raw.instructions;
+	}
+	return { ok: true, settings };
+}
+
 /** The custom endpoint's per-model pins (PATCH /api/custom-provider): the
  *  whole desired map, replace-whole like every section. Strict write side — a
  *  token count must be a whole number at or above the floor (the read side
@@ -455,6 +486,7 @@ export const SETTINGS_SECTIONS = {
 	compaction: parseCompactionSettingsBody,
 	models: parseModelsSettingsBody,
 	dictation: parseDictationSettingsBody,
+	speech: parseSpeechSettingsBody,
 	claudeCode: parseClaudeCodeSettingsBody,
 } as const;
 

@@ -8,6 +8,7 @@ import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
 import { clearTurnFailure } from "./turn-runs.ts";
 import { discardChatDeliveries } from "./jobs.ts";
+import { speechStore } from "../store/speech.ts";
 
 /**
  * Server-side chat entries for the transport layer (app/api/chats*,
@@ -152,6 +153,12 @@ function finishChatRecordDeletion(chatId: string): number {
 	if (stores.chatStore.deleteChat(chatId)) {
 		discardChatDeliveries(chatId);
 		clearTurnFailure(chatId);
+		// Read-aloud audio is session data too (speech wave, 2026-11-08).
+		try {
+			speechStore.deleteChat(chatId);
+		} catch (error) {
+			console.warn(`[speech] could not remove audio for ${chatId}:`, error);
+		}
 	}
 	return jobsRemoved;
 }
