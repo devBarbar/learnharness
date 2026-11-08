@@ -104,10 +104,11 @@ const nextConfig: NextConfig = {
 			"node_modules/@earendil-works/pi-ai/dist/utils/sleep.js",
 			"node_modules/@earendil-works/pi-agent-core/dist/**/*.json",
 			// Read-aloud (speech wave, 2026-11-08): speech-rule-engine loads its
-			// locale maps from disk and its DOM/XPath deps through eval("require")
-			// — all invisible to the tracer.
-			"node_modules/speech-rule-engine/lib/**/*",
-			"node_modules/@xmldom/xmldom/**/*",
+			// locale maps from disk and its deps through eval("require") — all
+			// invisible to the tracer. The WHOLE package: its own nested
+			// node_modules carry the commander/@xmldom versions it requires at
+			// load (the packaged 0.4.1 server died on a missing commander).
+			"node_modules/speech-rule-engine/**/*",
 			"node_modules/wicked-good-xpath/**/*",
 			// Next 16.3.2 native Turbopack applies unanchored excludes while
 			// traversing modules; **/data/**/* still prunes gcp-metadata and

@@ -9,14 +9,34 @@
  * TeX → MathML via KaTeX (the renderer's own engine), MathML → speech via
  * SRE, entirely local. A formula SRE cannot read keeps an empty reference;
  * the model then reads the TeX alone.
+ *
+ * SRE is loaded LAZILY, on the first formula: it requires its deps at load
+ * time, and a top-level import put it in every route through the server
+ * barrel — one missing dependency took the whole packaged server down. If
+ * it cannot load, every reference stays empty and reading carries on.
  */
 
 import katex from "katex";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { mathFromMarkdown } from "mdast-util-math";
 import { math } from "micromark-extension-math";
-import SRE from "speech-rule-engine";
+import type SreApi from "speech-rule-engine";
 import { transformMathDelimiters } from "../../core/math-delims.ts";
+
+type Sre = typeof SreApi;
+let sreLoad: Promise<Sre | null> | null = null;
+
+/** The engine, loaded once; null (logged once) when it cannot load. */
+function loadSre(): Promise<Sre | null> {
+	sreLoad ??= import("speech-rule-engine").then(
+		(mod) => (mod as { default?: Sre }).default ?? (mod as unknown as Sre),
+		(error: unknown) => {
+			console.warn("[speech] speech-rule-engine unavailable — reading without formula references:", error);
+			return null;
+		},
+	);
+	return sreLoad;
+}
 
 export interface FormulaReference {
 	tex: string;
@@ -78,6 +98,8 @@ export function formulaReferences(markdown: string, language: string): Promise<F
 	const formulas = extractFormulas(markdown);
 	if (formulas.length === 0) return Promise.resolve([]);
 	const run = queue.then(async () => {
+		const SRE = await loadSre();
+		if (!SRE) return formulas.map(({ tex, display }) => ({ tex, display, reading: "" }));
 		await SRE.setupEngine({ locale: sreLocale(language), domain: "mathspeak", modality: "speech" });
 		await SRE.engineReady();
 		return formulas.map(({ tex, display }) => {
